@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  # ── Existing LEGION services continue above ──
+
+  adzryco-meta-agent:
+    image: python:3.12-slim
+    container_name: adzryco-meta-agent
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./adzryco-meta-agent/backend:/app
+    command: >
+      sh -c "pip install -r requirements.txt -q &&
+             uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./adzryco-meta-agent/.env
+    networks:
+      - legion-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  legion-network:
+    external: true
