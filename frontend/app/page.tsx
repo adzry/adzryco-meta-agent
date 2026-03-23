@@ -1,10 +1,16 @@
 "use client";
-import { useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import ChatArea from "./components/ChatArea";
 import ApprovalModal from "./components/ApprovalModal";
+import SystemStatusBar from "./components/SystemStatusBar";
+import SystemStatusPanel from "./components/SystemStatusPanel";
+import SetupChecklist from "./components/SetupChecklist";
 import { Message, ApprovalData, ConversationMeta } from "./components/types";
 import { Menu, X } from "lucide-react";
+import { fetchConfigStatus, fetchHealth } from "../lib/api/system";
+import { getApiUrl } from "../lib/config";
+import { ConfigStatusResponse, HealthResponse } from "../lib/types/system";
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -16,11 +22,49 @@ export default function Home() {
   const [conversations, setConversations] = useState<ConversationMeta[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [configStatus, setConfigStatus] = useState<ConfigStatusResponse | null>(null);
+  const [runtimeOffline, setRuntimeOffline] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  const canRead = !runtimeOffline;
+  const canDraft = !runtimeOffline && Boolean(configStatus?.services.anthropic);
+  const canWrite = canDraft && Boolean(configStatus?.services.x_api);
+
+  const connectionHint = useMemo(() => {
+    if (runtimeOffline) return "Connection error. Backend is offline or NEXT_PUBLIC_API_URL is wrong.";
+    if (!configStatus?.services.anthropic) return "Anthropic key missing. Draft/write actions are limited.";
+    if (!configStatus?.services.x_api) return "X credentials missing. Write actions remain disabled.";
+    return "";
+  }, [runtimeOffline, configStatus]);
+
+  const refreshRuntime = async () => {
+    try {
+      const [healthData, configData] = await Promise.all([fetchHealth(), fetchConfigStatus()]);
+      setHealth(healthData);
+      setConfigStatus(configData);
+      setRuntimeOffline(false);
+    } catch {
+      setRuntimeOffline(true);
+    }
+  };
+
+  useEffect(() => {
+    void refreshRuntime();
+  }, []);
 
   const handleSubmit = async (text?: string) => {
     const msg = text ?? input.trim();
     if (!msg || isStreaming) return;
+
+    if (!canRead) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Backend is offline. Start the API service or fix NEXT_PUBLIC_API_URL first.", id: `offline-${Date.now()}`, isError: true },
+      ]);
+      return;
+    }
+
     setInput("");
     setMobileSidebarOpen(false);
 
@@ -31,14 +75,18 @@ export default function Home() {
 
     try {
       abortRef.current = new AbortController();
-      const res = await fetch("http://localhost:8000/chat/stream", {
+      const res = await fetch(getApiUrl("/chat/stream"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: msg, conversation_id: conversationId, user_id: "adzry" }),
         signal: abortRef.current.signal,
       });
 
-      const reader = res.body!.getReader();
+      if (!res.ok || !res.body) {
+        throw new Error(`Backend request failed (${res.status})`);
+      }
+
+      const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let assistantContent = "";
 
@@ -72,10 +120,12 @@ export default function Home() {
       }
     } catch (err: any) {
       if (err.name !== "AbortError") {
-        setMessages(prev => prev.map(m => m.id === "thinking" ? { ...m, content: "Connection error. Is the backend running?", isThinking: false, isError: true, id: "err" } : m));
+        setMessages(prev => prev.map(m => m.id === "thinking" ? { ...m, content: connectionHint || "Connection error. Is the backend running?", isThinking: false, isError: true, id: `err-${Date.now()}` } : m));
+        setRuntimeOffline(true);
       }
     } finally {
       setIsStreaming(false);
+      void refreshRuntime();
     }
   };
 
@@ -85,7 +135,7 @@ export default function Home() {
     setApproval(null);
     setThreadPreview(null);
     try {
-      const res = await fetch("http://localhost:8000/chat/approve", {
+      const res = await fetch(getApiUrl("/chat/approve"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ thread_id: threadId, approved }),
@@ -93,7 +143,9 @@ export default function Home() {
       const data = await res.json();
       setMessages(prev => [...prev, { role: "assistant", content: approved ? (data.result?.user_message || "✅ Done.") : "Action cancelled.", id: Date.now().toString() }]);
     } catch {
-      setMessages(prev => [...prev, { role: "assistant", content: "Error processing approval.", id: "err2", isError: true }]);
+      setMessages(prev => [...prev, { role: "assistant", content: "Error processing approval.", id: `err2-${Date.now()}`, isError: true }]);
+    } finally {
+      void refreshRuntime();
     }
   };
 
@@ -103,13 +155,10 @@ export default function Home() {
 
   return (
     <div style={{ display: "flex", height: "100vh", background: "var(--bg)", overflow: "hidden", position: "relative" }}>
-
-      {/* Mobile overlay */}
       {mobileSidebarOpen && (
         <div className="sidebar-overlay" onClick={() => setMobileSidebarOpen(false)} style={{ display: "none" }} />
       )}
 
-      {/* Mobile hamburger */}
       <button
         onClick={() => setMobileSidebarOpen(v => !v)}
         style={{ display: "none", position: "fixed", top: 12, left: 12, zIndex: 50, width: 36, height: 36, borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-card)", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "var(--shadow-sm)" }}
@@ -128,17 +177,28 @@ export default function Home() {
         onToggle={() => setSidebarOpen(v => !v)}
         onMobileClose={() => setMobileSidebarOpen(false)}
         onPromptSelect={p => handleSubmit(p)}
+        capabilities={{ canRead, canDraft, canWrite }}
       />
 
-      <ChatArea
-        messages={messages}
-        input={input}
-        isStreaming={isStreaming}
-        onInputChange={setInput}
-        onSubmit={() => handleSubmit()}
-        onStop={() => abortRef.current?.abort()}
-        sidebarOpen={sidebarOpen}
-      />
+      <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <div style={{ padding: "18px 20px 0", display: "grid", gap: 12 }}>
+          <SystemStatusBar health={health} config={configStatus} offline={runtimeOffline} />
+          <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 12 }} className="runtime-grid">
+            <SystemStatusPanel health={health} config={configStatus} offline={runtimeOffline} onRefresh={refreshRuntime} />
+            <SetupChecklist config={configStatus} health={health} offline={runtimeOffline} />
+          </div>
+        </div>
+
+        <ChatArea
+          messages={messages}
+          input={input}
+          isStreaming={isStreaming}
+          onInputChange={setInput}
+          onSubmit={() => handleSubmit()}
+          onStop={() => abortRef.current?.abort()}
+          sidebarOpen={sidebarOpen}
+        />
+      </main>
 
       {approval && (
         <ApprovalModal
