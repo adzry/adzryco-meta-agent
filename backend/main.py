@@ -20,6 +20,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from config import settings
+from services.approval_store import get_approval_store
 from services.health import build_config_status, build_health_status, build_ready_status
 
 logger.remove()
@@ -43,7 +44,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+approval_store = get_approval_store(settings)
 logger.info(f"Runtime config: {settings.redacted_dict()}")
+logger.info(
+    f"Approval store backend: {approval_store.backend_name()} | durable={approval_store.is_durable()}"
+)
 
 
 class ChatRequest(BaseModel):
@@ -61,9 +66,6 @@ class ScheduleRequest(BaseModel):
     message: str
     scheduled_at: str
     user_id: str = "default"
-
-
-pending_approvals: dict = {}
 
 
 async def stream_agent(request: ChatRequest) -> AsyncGenerator[str, None]:
@@ -106,8 +108,8 @@ async def stream_agent(request: ChatRequest) -> AsyncGenerator[str, None]:
             elif node_name == "await_approval":
                 plan = node_state.get("action_plan", {})
                 thread_draft = node_state.get("thread_draft", [])
-                pending_approvals[thread_id] = {"state": node_state, "config": config}
-                yield f"data: {json.dumps({'type': 'approval_required', 'thread_id': thread_id, 'plan': plan, 'thread_draft': thread_draft})}\n\n"
+                approval_store.set(thread_id, {"state": node_state, "config": config})
+                yield f"data: {json.dumps({'type': 'approval_required', 'thread_id': thread_id, 'plan': plan, 'thread_draft': thread_draft, 'approval_store': approval_store.backend_name(), 'durable': approval_store.is_durable()})}\n\n"
                 return
 
             elif node_name in ("executor", "read_only_executor"):
@@ -143,14 +145,14 @@ async def chat_stream(request: Request, body: ChatRequest):
 async def approve_action(body: ApprovalRequest):
     from tools.graph import agent_graph
 
-    pending = pending_approvals.get(body.thread_id)
+    pending = approval_store.get(body.thread_id)
     if not pending:
         raise HTTPException(status_code=404, detail="No pending approval for this thread")
 
     state = pending["state"]
     config = pending["config"]
     state["approval_granted"] = body.approved
-    del pending_approvals[body.thread_id]
+    approval_store.delete(body.thread_id)
 
     try:
         result_state = None
@@ -161,6 +163,8 @@ async def approve_action(body: ApprovalRequest):
         return {
             "success": True,
             "approved": body.approved,
+            "approval_store": approval_store.backend_name(),
+            "durable": approval_store.is_durable(),
             "result": result_state.get("execution_result", {}) if result_state else {},
         }
     except Exception as exc:

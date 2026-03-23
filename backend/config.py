@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # App
     app_name: str = "AdzryCo Meta-Agent"
-    app_version: str = "2.1.0"
+    app_version: str = "2.2.0"
     app_env: str = "development"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
@@ -41,8 +41,9 @@ class Settings(BaseSettings):
     # Security
     secret_key: str = "change-me-in-production"
 
-    # Redis (optional)
-    redis_url: str | None = "redis://localhost:6379"
+    # Approval Store / Redis (optional)
+    approval_store_backend: str = "memory"
+    redis_url: str | None = None
 
     @property
     def has_anthropic(self) -> bool:
@@ -68,6 +69,11 @@ class Settings(BaseSettings):
     def has_redis(self) -> bool:
         return bool(self.redis_url)
 
+    @property
+    def normalized_approval_store_backend(self) -> str:
+        value = (self.approval_store_backend or "memory").strip().lower()
+        return value if value in {"memory", "redis"} else "memory"
+
     def get_cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
@@ -83,6 +89,9 @@ class Settings(BaseSettings):
         if not self.supabase_service_key:
             errors.append("SUPABASE_SERVICE_KEY is missing")
 
+        if self.normalized_approval_store_backend == "redis" and not self.has_redis:
+            errors.append("APPROVAL_STORE_BACKEND=redis requires REDIS_URL")
+
         return errors
 
     def warnings(self) -> list[str]:
@@ -91,8 +100,11 @@ class Settings(BaseSettings):
         if not self.has_x_credentials:
             warnings.append("X/Twitter credentials missing; write actions should remain disabled")
 
-        if not self.has_redis:
-            warnings.append("Redis not configured; approval state is ephemeral")
+        if self.normalized_approval_store_backend == "memory":
+            warnings.append("Approval store is using in-memory mode; pending approvals are ephemeral")
+
+        if self.normalized_approval_store_backend == "redis" and not self.has_redis:
+            warnings.append("Redis approval store requested but REDIS_URL is missing; startup should fall back or fail fast")
 
         if self.secret_key == "change-me-in-production":
             warnings.append("SECRET_KEY is using the default insecure value")
@@ -110,6 +122,7 @@ class Settings(BaseSettings):
             "anthropic_configured": self.has_anthropic,
             "supabase_configured": self.has_supabase,
             "x_configured": self.has_x_credentials,
+            "approval_store_backend": self.normalized_approval_store_backend,
             "redis_configured": self.has_redis,
             "secret_key_is_default": self.secret_key == "change-me-in-production",
         }

@@ -9,6 +9,32 @@ from config import Settings
 from database import ping_supabase
 
 
+def approval_store_status(settings: Settings) -> dict[str, Any]:
+    backend = settings.normalized_approval_store_backend
+
+    if backend == "redis":
+        if settings.has_redis:
+            return {
+                "status": "configured",
+                "backend": "redis",
+                "durable": False,
+                "detail": "Redis backend selected; runtime store scaffold not fully durable yet",
+            }
+        return {
+            "status": "misconfigured",
+            "backend": "redis",
+            "durable": False,
+            "detail": "APPROVAL_STORE_BACKEND=redis but REDIS_URL is missing",
+        }
+
+    return {
+        "status": "configured",
+        "backend": "memory",
+        "durable": False,
+        "detail": "In-memory approval store active; pending approvals are ephemeral",
+    }
+
+
 async def check_supabase_status(settings: Settings) -> dict[str, Any]:
     if not settings.has_supabase:
         return {
@@ -40,6 +66,7 @@ async def build_health_status(settings: Settings) -> dict[str, Any]:
     env_errors = settings.validation_errors()
     supabase_status = await check_supabase_status(settings)
     redis_status = check_redis_status(settings)
+    approval_status = approval_store_status(settings)
 
     checks = {
         "env": {
@@ -54,10 +81,11 @@ async def build_health_status(settings: Settings) -> dict[str, Any]:
         },
         "supabase": supabase_status,
         "redis": redis_status,
+        "approval_store": approval_status,
     }
 
     overall = "ok"
-    if env_errors or supabase_status["status"] in {"missing", "error"}:
+    if env_errors or supabase_status["status"] in {"missing", "error"} or approval_status["status"] == "misconfigured":
         overall = "degraded"
 
     return {
@@ -75,7 +103,7 @@ async def build_ready_status(settings: Settings) -> tuple[dict[str, Any], bool]:
     Strict readiness for deployment:
     - Anthropic required
     - Supabase required and must be reachable
-    - Redis optional
+    - Approval store config cannot be internally misconfigured
     - X optional for read-only mode
     """
     health = await build_health_status(settings)
@@ -84,6 +112,7 @@ async def build_ready_status(settings: Settings) -> tuple[dict[str, Any], bool]:
         settings.has_anthropic
         and settings.has_supabase
         and health["checks"]["supabase"]["status"] == "ok"
+        and health["checks"]["approval_store"]["status"] != "misconfigured"
     )
 
     return (
@@ -95,6 +124,7 @@ async def build_ready_status(settings: Settings) -> tuple[dict[str, Any], bool]:
                 "anthropic": settings.has_anthropic,
                 "supabase": settings.has_supabase,
                 "supabase_reachable": health["checks"]["supabase"]["status"] == "ok",
+                "approval_store_valid": health["checks"]["approval_store"]["status"] != "misconfigured",
             },
             "warnings": health["warnings"],
         },
@@ -103,6 +133,7 @@ async def build_ready_status(settings: Settings) -> tuple[dict[str, Any], bool]:
 
 
 async def build_config_status(settings: Settings) -> dict[str, Any]:
+    approval_status = approval_store_status(settings)
     return {
         "app": {
             "name": settings.app_name,
@@ -114,6 +145,12 @@ async def build_config_status(settings: Settings) -> dict[str, Any]:
             "supabase": settings.has_supabase,
             "x_api": settings.has_x_credentials,
             "redis": settings.has_redis,
+        },
+        "approval_store": {
+            "backend": approval_status["backend"],
+            "durable": approval_status["durable"],
+            "status": approval_status["status"],
+            "detail": approval_status["detail"],
         },
         "cors_origins": settings.get_cors_origins(),
         "warnings": settings.warnings(),
