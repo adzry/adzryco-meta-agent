@@ -1,42 +1,42 @@
 """
 AdzryCo Meta-Agent — Supabase Database Layer
 """
-from supabase import create_client, Client
-from pydantic_settings import BaseSettings
-from loguru import logger
+from __future__ import annotations
+
+from datetime import datetime
 from typing import Optional
 import uuid
-from datetime import datetime
 
+from loguru import logger
+from supabase import Client, create_client
 
-class Settings(BaseSettings):
-    supabase_url: str
-    supabase_service_key: str
-    anthropic_api_key: str
-    x_api_key: str
-    x_api_secret: str
-    x_access_token: str
-    x_access_token_secret: str
-    x_bearer_token: str
-    secret_key: str = "change-me-in-production"
-    redis_url: str = "redis://localhost:6379"
+from config import settings
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
-
-
-settings = Settings()
 
 _supabase: Optional[Client] = None
 
 
 def get_supabase() -> Client:
     global _supabase
+
+    if not settings.has_supabase:
+        raise RuntimeError("Supabase is not configured")
+
     if _supabase is None:
         _supabase = create_client(settings.supabase_url, settings.supabase_service_key)
         logger.info("Supabase client initialized")
+
     return _supabase
+
+
+async def ping_supabase() -> bool:
+    try:
+        db = get_supabase()
+        db.table("conversations").select("id").limit(1).execute()
+        return True
+    except Exception as exc:
+        logger.warning(f"Supabase ping failed: {exc}")
+        return False
 
 
 async def create_conversation(user_id: str, title: str = "New Conversation") -> dict:

@@ -2,60 +2,73 @@
 AdzryCo Meta-Agent — FastAPI Main
 Streaming SSE + LangGraph HITL approval endpoints
 """
+from __future__ import annotations
+
+import asyncio
+import json
+import sys
+import uuid
+from typing import AsyncGenerator, Optional
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import Optional, AsyncGenerator
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
+from fastapi.responses import JSONResponse, StreamingResponse
 from loguru import logger
-import json
-import uuid
-import asyncio
-import sys
+from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
-# ── Logging ────────────────────────────────────────────────────────────────
+from config import settings
+from services.health import build_config_status, build_health_status, build_ready_status
+
 logger.remove()
-logger.add(sys.stderr, level="INFO", colorize=True,
-           format="<green>{time:HH:mm:ss}</green> | <level>{level}</level> | {message}")
+logger.add(
+    sys.stderr,
+    level="INFO",
+    colorize=True,
+    format="<green>{time:HH:mm:ss}</green> | <level>{level}</level> | {message}",
+)
 
-# ── App ────────────────────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)
-app = FastAPI(title="AdzryCo Meta-Agent", version="2.0.0")
+app = FastAPI(title=settings.app_name, version=settings.app_version)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://adzryco-meta-agent.vercel.app"],
+    allow_origins=settings.get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ── Schemas ────────────────────────────────────────────────────────────────
+logger.info(f"Runtime config: {settings.redacted_dict()}")
+
+
 class ChatRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
     user_id: str = "default"
 
+
 class ApprovalRequest(BaseModel):
     thread_id: str
     approved: bool
+
 
 class ScheduleRequest(BaseModel):
     message: str
     scheduled_at: str
     user_id: str = "default"
 
-# ── In-memory pending approvals store (use Redis in production) ────────────
+
 pending_approvals: dict = {}
 
-# ── Streaming chat ─────────────────────────────────────────────────────────
+
 async def stream_agent(request: ChatRequest) -> AsyncGenerator[str, None]:
-    from tools.graph import agent_graph, AgentState
+    from tools.graph import AgentState, agent_graph
+
     thread_id = request.conversation_id or str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
 
@@ -111,9 +124,9 @@ async def stream_agent(request: ChatRequest) -> AsyncGenerator[str, None]:
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
-    except Exception as e:
-        logger.error(f"Stream error: {e}")
-        yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+    except Exception as exc:
+        logger.error(f"Stream error: {exc}")
+        yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
 
 
 @app.post("/chat/stream")
@@ -128,8 +141,8 @@ async def chat_stream(request: Request, body: ChatRequest):
 
 @app.post("/chat/approve")
 async def approve_action(body: ApprovalRequest):
-    """Resume the graph after human approval/rejection."""
     from tools.graph import agent_graph
+
     pending = pending_approvals.get(body.thread_id)
     if not pending:
         raise HTTPException(status_code=404, detail="No pending approval for this thread")
@@ -144,28 +157,49 @@ async def approve_action(body: ApprovalRequest):
         async for event in agent_graph.astream(state, config=config):
             node_name = list(event.keys())[0]
             result_state = event[node_name]
+
         return {
             "success": True,
             "approved": body.approved,
             "result": result_state.get("execution_result", {}) if result_state else {},
         }
-    except Exception as e:
-        logger.error(f"Approval resume error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        logger.error(f"Approval resume error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/conversations/{user_id}")
 async def get_conversations(user_id: str):
     from database import get_conversations as db_get_convos
+
     convos = await db_get_convos(user_id)
     return {"conversations": convos}
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "adzryco-meta-agent"}
+    return await build_health_status(settings)
+
+
+@app.get("/ready")
+async def ready():
+    payload, is_ready = await build_ready_status(settings)
+    status_code = 200 if is_ready else 503
+    return JSONResponse(content=payload, status_code=status_code)
+
+
+@app.get("/config/status")
+async def config_status():
+    return await build_config_status(settings)
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, log_level="info")
+
+    uvicorn.run(
+        "main:app",
+        host=settings.api_host,
+        port=settings.api_port,
+        reload=True,
+        log_level="info",
+    )
