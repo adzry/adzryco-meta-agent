@@ -36,7 +36,7 @@ export default function ChatArea({ messages, input, isStreaming, onInputChange, 
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--bg)", minWidth: 0 }}>
-      {/* ── Messages ──────────────────────────────── */}
+      {/* Messages */}
       <div style={{ flex: 1, overflowY: "auto", padding: "40px 0 24px" }}>
         <div style={{ maxWidth: 680, margin: "0 auto", padding: "0 20px" }}>
           {messages.length === 0 ? <EmptyState /> : (
@@ -48,7 +48,7 @@ export default function ChatArea({ messages, input, isStreaming, onInputChange, 
         </div>
       </div>
 
-      {/* ── Input bar ─────────────────────────────── */}
+      {/* Input bar */}
       <div style={{ padding: "12px 20px 20px", background: "var(--bg)" }}>
         <div style={{ maxWidth: 680, margin: "0 auto" }}>
           <div style={inputWrap}>
@@ -92,7 +92,7 @@ export default function ChatArea({ messages, input, isStreaming, onInputChange, 
   );
 }
 
-// ─── Empty state ─────────────────────────────────────────────────────────
+// ─── Empty state ──────────────────────────────────────────────────────────
 function EmptyState() {
   const suggestions = [
     "Search tweets about n8n automation",
@@ -102,23 +102,18 @@ function EmptyState() {
   ];
   return (
     <div className="animate-fadeUp" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 60, gap: 0 }}>
-      {/* Icon */}
       <div style={{ width: 64, height: 64, borderRadius: 20, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 24, boxShadow: "0 8px 32px rgba(0,0,0,.18)" }}>
         <Sparkles size={28} color="white" />
       </div>
-
-      {/* Heading */}
       <h1 style={{ fontSize: 32, fontWeight: 800, color: "var(--text-1)", letterSpacing: "-0.04em", textAlign: "center", lineHeight: 1.1, marginBottom: 10 }}>
         AdzryCo Meta-Agent
       </h1>
       <p style={{ fontSize: 15, color: "var(--text-2)", textAlign: "center", maxWidth: 400, lineHeight: 1.6, marginBottom: 36, fontWeight: 400 }}>
         Your autonomous X/Twitter AI. Search, post, analyze — all with human-in-the-loop approval.
       </p>
-
-      {/* Suggestion chips */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, width: "100%", maxWidth: 520 }}>
         {suggestions.map((s, i) => (
-          <div key={i} style={suggestionChip} className="animate-fadeUp" style={{ ...suggestionChip, animationDelay: `${i * 0.06}s`, opacity: 0 }}>
+          <div key={i} className="animate-fadeUp" style={{ ...suggestionChip, animationDelay: `${i * 0.06}s`, opacity: 0 }}>
             <span style={{ fontSize: 13.5, color: "var(--text-2)", fontWeight: 500, lineHeight: 1.4 }}>{s}</span>
           </div>
         ))}
@@ -127,7 +122,7 @@ function EmptyState() {
   );
 }
 
-// ─── Message row ─────────────────────────────────────────────────────────
+// ─── Message row ──────────────────────────────────────────────────────────
 function MessageRow({ message, index }: { message: Message; index: number }) {
   const isUser = message.role === "user";
   return (
@@ -149,7 +144,7 @@ function MessageRow({ message, index }: { message: Message; index: number }) {
         fontSize: 14.5,
         lineHeight: 1.65,
         boxShadow: isUser ? "none" : "var(--shadow-sm)",
-        border: isUser ? "none" : `1px solid var(--border)`,
+        border: isUser ? "none" : "1px solid var(--border)",
         letterSpacing: isUser ? "-0.01em" : "0",
         fontWeight: isUser ? 500 : 400,
       }}>
@@ -198,5 +193,5 @@ const agentAvatar: React.CSSProperties = {
 };
 const suggestionChip: React.CSSProperties = {
   padding: "12px 16px", borderRadius: "var(--r-md)", border: "1.5px solid var(--border)",
-  background: "var(--bg-card)", cursor: "default", boxShadow: "var(--shadow-sm)",
+  background: "var(--bg-card)", boxShadow: "var(--shadow-sm)",
 };
