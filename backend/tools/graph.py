@@ -9,9 +9,9 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 import json
 from loguru import logger
-from database import settings
+from config import settings
 
-# ── Model ──────────────────────────────────────────────────────────────────
+# ── Model ──────────────────────────────────────────────────────────────────────────
 llm = ChatAnthropic(
     model="claude-sonnet-4-5-20250929",
     api_key=settings.anthropic_api_key,
@@ -19,7 +19,7 @@ llm = ChatAnthropic(
     max_tokens=4096,
 )
 
-# ── State ──────────────────────────────────────────────────────────────────
+# ── State ──────────────────────────────────────────────────────────────────────────
 class AgentState(TypedDict):
     messages: list[dict]
     user_input: str
@@ -85,7 +85,7 @@ Always confirm what was done and provide relevant details.
 """
 
 
-# ── Nodes ──────────────────────────────────────────────────────────────────
+# ── Nodes ──────────────────────────────────────────────────────────────────────────
 async def reasoner_node(state: AgentState) -> AgentState:
     """Analyze intent and plan the action."""
     logger.info(f"Reasoner processing: {state['user_input'][:100]}")
@@ -201,7 +201,7 @@ async def await_approval_node(state: AgentState) -> AgentState:
     return state
 
 
-# ── Graph ──────────────────────────────────────────────────────────────────
+# ── Graph ──────────────────────────────────────────────────────────────────────────
 def build_graph() -> StateGraph:
     graph = StateGraph(AgentState)
     graph.add_node("reasoner", reasoner_node)

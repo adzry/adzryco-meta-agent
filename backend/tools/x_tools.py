@@ -5,7 +5,7 @@ AdzryCo Meta-Agent — X/Twitter Tools (Tweepy OAuth2)
 import tweepy
 from loguru import logger
 from typing import Optional
-from database import settings
+from config import settings
 
 
 def get_tweepy_client() -> tweepy.Client:
