@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { RefreshCw, ShieldAlert } from "lucide-react";
 import { ConfigStatusResponse, HealthResponse } from "../../lib/types/system";
 
@@ -95,14 +96,14 @@ export default function SystemStatusPanel({
   );
 }
 
-const cardStyle: React.CSSProperties = {
+const cardStyle: CSSProperties = {
   border: "1px solid var(--border)",
   borderRadius: 12,
   background: "var(--bg-hover)",
   padding: 10,
 };
 
-const labelStyle: React.CSSProperties = {
+const labelStyle: CSSProperties = {
   fontSize: 10.5,
   fontWeight: 800,
   color: "var(--text-3)",
@@ -110,7 +111,7 @@ const labelStyle: React.CSSProperties = {
   letterSpacing: "0.08em",
 };
 
-const valueStyle: React.CSSProperties = {
+const valueStyle: CSSProperties = {
   fontSize: 13,
   fontWeight: 700,
   color: "var(--text-1)",

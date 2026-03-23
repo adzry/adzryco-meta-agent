@@ -1,38 +1,46 @@
-# AdzryCo Meta-Agent v2
+# AdzryCo Meta-Agent v2.2
 
-Autonomous X/Twitter AI agent — Claude Sonnet + LangGraph + FastAPI + Next.js 15.
+Autonomous X/Twitter AI agent console with human-in-the-loop approval, runtime diagnostics, and frontend/backend status awareness.
 
 ## Stack
 
 | Layer | Tech |
 |-------|------|
-| AI | Claude Sonnet (`claude-sonnet-4-5-20250929`) + LangGraph |
+| AI | Claude Sonnet + LangGraph |
 | Backend | Python 3.12 + FastAPI + Tweepy |
-| Frontend | Next.js 15 + TypeScript + Tailwind |
+| Frontend | Next.js 16 + TypeScript + Tailwind |
 | Database | Supabase (PostgreSQL) |
-| Infra | Docker (alongside LEGION stack) |
+| Infra | Docker |
 
-## Features
+## Current capabilities
 
-- 12 X/Twitter tools: tweet, delete, like, retweet, search, get_user, DM, list, follow, unfollow, analytics, thread
-- Human-in-the-loop approval modal for all write actions
+- Runtime truth endpoints: `/health`, `/ready`, `/config/status`
+- Human-in-the-loop approval flow for write actions
 - Thread draft → preview → approve → post pipeline
-- Real-time streaming SSE responses
-- Apple white minimalism UI
-- LangGraph 3-agent pipeline: Reasoner → Approver → Executor
+- Real-time SSE responses
+- Frontend status strip, setup checklist, and runtime diagnostics panel
+- Capability-gated quick actions in the sidebar
+- Approval store abstraction with memory mode and Redis scaffold
 
-## Local Setup
+## Current limitations
+
+- Redis approval backend is still a scaffold and is not yet truly durable
+- PR branch currently uses draft status until final validation is complete
+- Frontend should be built locally after each runtime/status change
+
+## Local setup
 
 ### 1. Backend
 
 ```bash
 cd adzryco-meta-agent/backend
 cp ../.env.example .env
-# Fill in .env with your keys
 pip install -r requirements.txt
 uvicorn main:app --reload
-# Backend runs at http://localhost:8000
 ```
+
+Backend default:
+- `http://localhost:8000`
 
 ### 2. Frontend
 
@@ -40,22 +48,37 @@ uvicorn main:app --reload
 cd adzryco-meta-agent/frontend
 npm install
 npm run dev
-# Frontend runs at http://localhost:3000
 ```
 
-### 3. Docker (add to LEGION stack)
+Frontend default:
+- `http://localhost:3000`
+
+Set frontend env if needed:
 
 ```bash
-# Copy .env.example → .env and fill in keys
-cp .env.example .env
-
-# Add the adzryco-meta-agent service to your existing docker-compose
-# (see docker-compose.yml in this repo)
-cd C:\Users\User\Projects\docker-poweruser
-docker compose up adzryco-meta-agent -d
+NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-## Supabase Schema
+## Runtime endpoints
+
+### `GET /health`
+Liveness + dependency summary.
+
+### `GET /ready`
+Strict readiness endpoint. Returns `200` only when required runtime dependencies are present and valid.
+
+### `GET /config/status`
+Frontend-safe redacted configuration and runtime capability summary.
+
+## Example degraded modes
+
+- Backend offline → frontend status bar shows backend offline
+- Anthropic missing → draft and write capabilities should remain limited
+- X credentials missing → write actions disabled
+- Approval store in memory mode → warnings shown, approvals are ephemeral
+- `APPROVAL_STORE_BACKEND=redis` without `REDIS_URL` → readiness degraded
+
+## Supabase schema
 
 Run this SQL in your Supabase project:
 
@@ -85,43 +108,40 @@ create table scheduled_tweets (
   tweet_id text,
   created_at timestamptz default now()
 );
-
--- RLS
-alter table conversations enable row level security;
-alter table messages enable row level security;
 ```
 
-## Deploy
-
-### Frontend → Vercel
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)
+## Docker
 
 ```bash
-cd frontend
-npx vercel --prod
-# Set env: NEXT_PUBLIC_API_URL=https://your-railway-backend.up.railway.app
+cp .env.example .env
+docker compose up adzryco-meta-agent -d
 ```
 
-### Backend → Railway
-
-1. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub
-2. Set root directory to `adzryco-meta-agent/backend`
-3. Add all env vars from `.env.example`
-4. Railway auto-detects Python + runs `uvicorn main:app --host 0.0.0.0 --port $PORT`
+`docker-compose.yml` uses `/health` for liveness. Use `/ready` as the stricter semantic readiness signal in deployment environments.
 
 ## Architecture
 
-```
+```text
 User → Next.js UI → FastAPI (SSE stream)
                        ↓
               LangGraph Agent Graph
               ┌─────────────────────┐
-              │ Reasoner Node       │ ← analyzes intent
-              │ Thread Draft Node   │ ← if generate_thread
-              │ await_approval Node │ ← HITL interrupt
-              │ Executor Node       │ ← calls x_tools.py
+              │ Reasoner Node       │
+              │ Thread Draft Node   │
+              │ await_approval Node │
+              │ Executor Node       │
               └─────────────────────┘
                        ↓
                  Tweepy → X API
+```
+
+## Suggested validation before merge
+
+```bash
+curl http://localhost:8000/health
+curl -i http://localhost:8000/ready
+curl http://localhost:8000/config/status
+
+cd frontend
+npm run build
 ```
