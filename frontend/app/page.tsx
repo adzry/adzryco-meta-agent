@@ -88,7 +88,6 @@ export default function Home() {
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let assistantContent = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -99,7 +98,7 @@ export default function Home() {
           if (data.thread_id && !conversationId) setConversationId(data.thread_id);
 
           if (data.type === "reasoning") {
-            assistantContent = `🧠 **Analyzing:** ${data.intent}`;
+            const assistantContent = `🧠 **Analyzing:** ${data.intent}`;
             setMessages(prev => prev.map(m => m.id === "thinking" ? { ...m, content: assistantContent, isThinking: false } : m));
           } else if (data.type === "thread_draft") {
             setThreadPreview(data.tweets);
@@ -109,8 +108,7 @@ export default function Home() {
             setIsStreaming(false);
             return;
           } else if (data.type === "result") {
-            assistantContent = data.message;
-            setMessages(prev => prev.map(m => m.id === "thinking" ? { ...m, content: assistantContent, isThinking: false, id: Date.now().toString() } : m));
+            setMessages(prev => prev.map(m => m.id === "thinking" ? { ...m, content: data.message, isThinking: false, id: Date.now().toString() } : m));
           } else if (data.type === "error") {
             setMessages(prev => prev.map(m => m.id === "thinking" ? { ...m, content: `❌ ${data.message}`, isThinking: false, isError: true, id: Date.now().toString() } : m));
           } else if (data.type === "rejected") {
@@ -118,8 +116,9 @@ export default function Home() {
           }
         }
       }
-    } catch (err: any) {
-      if (err.name !== "AbortError") {
+    } catch (err: unknown) {
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      if (!isAbort) {
         setMessages(prev => prev.map(m => m.id === "thinking" ? { ...m, content: connectionHint || "Connection error. Is the backend running?", isThinking: false, isError: true, id: `err-${Date.now()}` } : m));
         setRuntimeOffline(true);
       }
@@ -156,7 +155,7 @@ export default function Home() {
   return (
     <div style={{ display: "flex", height: "100vh", background: "var(--bg)", overflow: "hidden", position: "relative" }}>
       {mobileSidebarOpen && (
-        <div className="sidebar-overlay" onClick={() => setMobileSidebarOpen(false)} style={{ display: "none" }} />
+        <div className="sidebar-overlay" onClick={() => setMobileSidebarOpen(false)} />
       )}
 
       <button
