@@ -10,7 +10,7 @@ import sys
 import uuid
 from typing import AsyncGenerator, Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from loguru import logger
@@ -133,7 +133,7 @@ async def stream_agent(request: ChatRequest) -> AsyncGenerator[str, None]:
 
 @app.post("/chat/stream")
 @limiter.limit("30/minute")
-async def chat_stream(request: Request, body: ChatRequest):
+async def chat_stream(body: ChatRequest):
     return StreamingResponse(
         stream_agent(body),
         media_type="text/event-stream",
