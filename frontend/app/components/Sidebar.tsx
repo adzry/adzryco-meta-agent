@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useTheme } from "next-themes";
-import { PenLine, MessageSquare, ChevronLeft, ChevronRight, BarChart2, X, Search, Zap, FileText, BarChart, Users, Radio, Sun, Moon } from "lucide-react";
+import { PenLine, MessageSquare, ChevronLeft, ChevronRight, BarChart2, X, Search, Zap, FileText, BarChart, Users, Radio, Sun, Moon, Lock } from "lucide-react";
 import { ConversationMeta, PROMPT_TEMPLATES } from "./types";
 import { formatDistanceToNow } from "date-fns";
 
@@ -14,18 +14,30 @@ interface SidebarProps {
   onToggle: () => void;
   onMobileClose: () => void;
   onPromptSelect: (prompt: string) => void;
+  capabilities?: {
+    canRead: boolean;
+    canDraft: boolean;
+    canWrite: boolean;
+  };
 }
 
 const ACTION_ICONS = [
-  { icon: Search,   color: "#2563EB", bg: "#EFF6FF", darkBg: "#1E3A5F" },
-  { icon: Users,    color: "#16A34A", bg: "#F0FDF4", darkBg: "#14301A" },
+  { icon: Search, color: "#2563EB", bg: "#EFF6FF", darkBg: "#1E3A5F" },
+  { icon: Users, color: "#16A34A", bg: "#F0FDF4", darkBg: "#14301A" },
   { icon: FileText, color: "#9333EA", bg: "#FAF5FF", darkBg: "#2D1B4E" },
-  { icon: Radio,    color: "#D97706", bg: "#FFFBEB", darkBg: "#3B2A0A" },
+  { icon: Radio, color: "#D97706", bg: "#FFFBEB", darkBg: "#3B2A0A" },
   { icon: BarChart, color: "#0891B2", bg: "#ECFEFF", darkBg: "#0C2E38" },
-  { icon: Zap,      color: "#DC2626", bg: "#FEF2F2", darkBg: "#3B1515" },
+  { icon: Zap, color: "#DC2626", bg: "#FEF2F2", darkBg: "#3B1515" },
 ];
 
-export default function Sidebar({ open, mobileOpen, conversations, onNewChat, onSelectChat, onToggle, onMobileClose, onPromptSelect }: SidebarProps) {
+function isPromptEnabled(capability: "read" | "draft" | "write", caps?: SidebarProps["capabilities"]) {
+  if (!caps) return true;
+  if (capability === "read") return caps.canRead;
+  if (capability === "draft") return caps.canDraft;
+  return caps.canWrite;
+}
+
+export default function Sidebar({ open, mobileOpen, conversations, onNewChat, onSelectChat, onToggle, onMobileClose, onPromptSelect, capabilities }: SidebarProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [hoveredPrompt, setHoveredPrompt] = useState<number | null>(null);
   const { theme, setTheme } = useTheme();
@@ -42,7 +54,6 @@ export default function Sidebar({ open, mobileOpen, conversations, onNewChat, on
     transition: "transform 0.25s cubic-bezier(.16,1,.3,1)",
   };
 
-  // Collapsed (desktop)
   if (!open && !mobileOpen) return (
     <div style={{ width: 52, background: "var(--bg-card)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 0", gap: 10, flexShrink: 0 }}>
       <button onClick={onToggle} style={iconBtn}><ChevronRight size={15} /></button>
@@ -56,7 +67,6 @@ export default function Sidebar({ open, mobileOpen, conversations, onNewChat, on
 
   return (
     <aside style={sidebarStyle} className="animate-slideIn">
-      {/* Header + Avatar */}
       <div style={{ padding: "14px 14px 12px", borderBottom: "1px solid var(--border)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
@@ -77,7 +87,6 @@ export default function Sidebar({ open, mobileOpen, conversations, onNewChat, on
           </div>
         </div>
 
-        {/* User profile */}
         <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: "var(--r-sm)", background: "var(--bg-hover)", border: "1px solid var(--border)" }}>
           <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg, #0A0A0B 0%, #3F3F46 100%)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "var(--shadow-xs)" }}>
             <span style={{ color: "#fff", fontSize: 13, fontWeight: 800 }}>A</span>
@@ -86,11 +95,10 @@ export default function Sidebar({ open, mobileOpen, conversations, onNewChat, on
             <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-1)", letterSpacing: "-0.02em" }}>AdzryCo</div>
             <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>@AdzryCo · Active</div>
           </div>
-          <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#16A34A", flexShrink: 0 }} />
+          <div style={{ width: 7, height: 7, borderRadius: "50%", background: capabilities?.canRead ? "#16A34A" : "#DC2626", flexShrink: 0 }} />
         </div>
       </div>
 
-      {/* New chat */}
       <div style={{ padding: "10px 12px 6px" }}>
         <button
           onClick={onNewChat}
@@ -102,20 +110,45 @@ export default function Sidebar({ open, mobileOpen, conversations, onNewChat, on
         </button>
       </div>
 
-      {/* Quick Actions */}
       <div style={{ padding: "14px 12px 6px" }}>
         <div style={sectionLabel}>Quick Actions</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 6 }}>
           {PROMPT_TEMPLATES.map((t, i) => {
             const { icon: Icon, color, bg, darkBg } = ACTION_ICONS[i % ACTION_ICONS.length];
             const hov = hoveredPrompt === i;
+            const enabled = isPromptEnabled(t.capability, capabilities);
             return (
-              <button key={i} onClick={() => { onPromptSelect(t.prompt); onMobileClose(); }} onMouseEnter={() => setHoveredPrompt(i)} onMouseLeave={() => setHoveredPrompt(null)}
-                style={{ background: hov ? "var(--bg-hover)" : "transparent", border: "none", cursor: "pointer", padding: "7px 8px", borderRadius: "var(--r-xs)", display: "flex", alignItems: "center", gap: 9, width: "100%", transition: "background 0.12s", fontFamily: "var(--font)" }}>
-                <span style={{ width: 22, height: 22, borderRadius: 7, background: hov ? (isDark ? darkBg : bg) : "var(--bg-active)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "background 0.15s" }}>
-                  <Icon size={11} color={hov ? color : "var(--text-3)"} />
+              <button
+                key={i}
+                onClick={() => {
+                  if (!enabled) return;
+                  onPromptSelect(t.prompt);
+                  onMobileClose();
+                }}
+                onMouseEnter={() => setHoveredPrompt(i)}
+                onMouseLeave={() => setHoveredPrompt(null)}
+                disabled={!enabled}
+                title={enabled ? t.label : t.capability === "write" ? "Requires Anthropic + X credentials" : t.capability === "draft" ? "Requires Anthropic API" : "Requires backend connectivity"}
+                style={{
+                  background: hov && enabled ? "var(--bg-hover)" : "transparent",
+                  border: "none",
+                  cursor: enabled ? "pointer" : "not-allowed",
+                  padding: "7px 8px",
+                  borderRadius: "var(--r-xs)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 9,
+                  width: "100%",
+                  transition: "background 0.12s, opacity 0.12s",
+                  fontFamily: "var(--font)",
+                  opacity: enabled ? 1 : 0.55,
+                }}
+              >
+                <span style={{ width: 22, height: 22, borderRadius: 7, background: hov && enabled ? (isDark ? darkBg : bg) : "var(--bg-active)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "background 0.15s" }}>
+                  <Icon size={11} color={hov && enabled ? color : "var(--text-3)"} />
                 </span>
-                <span style={{ fontSize: 12.5, color: "var(--text-2)", fontWeight: 500, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{t.label}</span>
+                <span style={{ fontSize: 12.5, color: "var(--text-2)", fontWeight: 500, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", flex: 1, textAlign: "left" }}>{t.label}</span>
+                {!enabled && <Lock size={11} color="var(--text-3)" />}
               </button>
             );
           })}
@@ -124,7 +157,6 @@ export default function Sidebar({ open, mobileOpen, conversations, onNewChat, on
 
       <div style={{ height: 1, background: "var(--border)", margin: "8px 12px" }} />
 
-      {/* Chat history */}
       <div style={{ flex: 1, overflow: "auto", padding: "0 12px" }}>
         <div style={sectionLabel}>Recent Chats</div>
         <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 1 }}>
@@ -150,7 +182,6 @@ export default function Sidebar({ open, mobileOpen, conversations, onNewChat, on
         </div>
       </div>
 
-      {/* Analytics footer */}
       <div style={{ padding: "10px 12px 14px", borderTop: "1px solid var(--border)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: "var(--r-xs)", background: "var(--bg-hover)", border: "1px solid var(--border)" }}>
           <div style={{ width: 30, height: 30, borderRadius: 8, background: "var(--bg-card)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -158,7 +189,7 @@ export default function Sidebar({ open, mobileOpen, conversations, onNewChat, on
           </div>
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-1)", letterSpacing: "-0.01em" }}>Analytics</div>
-            <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>Coming soon</div>
+            <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{capabilities?.canRead ? "Coming soon" : "Backend offline"}</div>
           </div>
         </div>
       </div>

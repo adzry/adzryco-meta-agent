@@ -89,7 +89,7 @@ export default function ApprovalModal({ approval, threadPreview, onApprove, onRe
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
                     <span style={{ fontSize: 11, color: editText.length > 280 ? "var(--red)" : "var(--text-3)", fontFamily: "var(--mono)" }}>{editText.length}/280</span>
                     <button onClick={handleSaveEdit} disabled={editText.length > 280}
-                      style={{ padding: "5px 14px", borderRadius: 8, background: "var(--accent)", color: editText.length > 280 ? "var(--text-3)" : (theme => "var(--bg-card)"), border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "var(--font)" }}>
+                      style={{ padding: "5px 14px", borderRadius: 8, background: "var(--accent)", color: editText.length > 280 ? "var(--text-3)" : "var(--bg-card)", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "var(--font)" }}>
                       Save
                     </button>
                   </div>
